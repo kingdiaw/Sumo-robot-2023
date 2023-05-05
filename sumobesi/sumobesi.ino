@@ -82,73 +82,100 @@ const int csPin[2] = {2, 3};
 
 // On-Board LED used as status indication
 const int statPin = 13;
-int s_kanan_depan;
-int s_kiri_depan;
-byte move_f, move_r;
+
+#define FL  A2
+#define FR  A3
+const int Left = 2;
+const int Right = 11;
+const int Front = 10;
+const int Back = 1;
+const int Pb1 = 0;
+const int Pb2 = 3;
+const int Buzzer = 13;
+
+int InpArray[] = {FL, FR, Left, Right, Front, Back, Pb1, Pb2};
+int OutArray[] = {Buzzer};
 
 void setup()
 {
-  Serial.begin(9600);
+  // Set input pins as INPUT
+  for (byte i = 0; i < sizeof(InpArray) / sizeof(InpArray[0]); i++)
+    pinMode(InpArray[i], INPUT);
 
+  // Set output pins as OUTPUT
+  for (byte i = 0; i < sizeof(OutArray) / sizeof(OutArray[0]); i++)
+    pinMode(OutArray[i], OUTPUT);
+
+  digitalWrite(Buzzer, LOW);
+  delay(100);
+  // Turn off the buzzer
+  digitalWrite(Buzzer, HIGH);
   motorSetup();
 
+  while (digitalRead(Pb2) == HIGH);
 }
 
-void loop()
-{
-  while (1) {
+// Define the Input structure using typedef
+typedef struct {
+  int StateOld = 0;
+  int StateNew = 0;
+} Input_t;
 
-    s_kanan_depan = analogRead(A1) < 990 ? 1 : 0;
-    s_kiri_depan = analogRead(A0) < 965 ? 1 : 0;
+typedef struct {
+  int detect;
+} process_t;
 
-    if ((s_kanan_depan == 1 || s_kiri_depan == 1) && move_r == 0) {
-      move_r = 1;
+Input_t sLeft;
+Input_t sRight;
+Input_t sFront;
+Input_t sBack;
+Input_t sFL;
+Input_t sFR;
+process_t sLine;
+process_t sObstacle;
 
-    }
-    else {
-      forward();
-    }
-    if (move_r) {
+void loop() {
+  while (true) {
+    sLeft.StateNew = digitalRead(Left);
+    sRight.StateNew = digitalRead(Right);
+    sFront.StateNew = digitalRead(Front);
+    sBack.StateNew = digitalRead(Back);
+    sFL.StateNew = digitalRead(FL);
+    sFR.StateNew = digitalRead(FR);
+    
+    sLine.detect = (sFL.StateNew) || (sFR.StateNew);
+    sObstacle.detect = !(sLeft.StateNew && sRight.StateNew && sFront.StateNew && sBack.StateNew);
 
+    if (sLine.detect) {
       reverse();
       delay(800);
       turn();
       delay(130);
-      move_r = 0;
     }
-
-  }
-
-  while (true)
-  {
-    motorGo(MOTOR_A, CW, PWM_MAX);
-    motorGo(MOTOR_B, CCW, PWM_MAX);
-    delay(500);
-
-    motorGo(MOTOR_A, BRAKEGND, PWM_MAX);
-    motorGo(MOTOR_B, BRAKEGND, PWM_MAX);
-    delay(1000);
-
-    motorGo(MOTOR_A, CCW, PWM_MAX);
-    motorGo(MOTOR_B, CW, PWM_MAX);
-    delay(500);
-
-    motorGo(MOTOR_A, BRAKEGND, PWM_MAX);
-    motorGo(MOTOR_B, BRAKEGND, PWM_MAX);
-    delay(1000);
-
-    if ((analogRead(csPin[0]) < currentSensingThreshhold) && (analogRead(csPin[1]) < currentSensingThreshhold))
-    {
-      digitalWrite(statPin, HIGH);
-    }
-    else
-    {
-      digitalWrite(statPin, LOW);
-      break;
+    else {
+      if (sObstacle.detect) {
+        if (sFront.StateNew == LOW) {
+          //Kejar depan
+          forward_max();
+        }
+        else if (sBack.StateNew == LOW) {
+          // turn 180
+          turn180();
+        }
+        else if (sLeft.StateNew == LOW) {
+          //Turn Left dan kejar
+          turn_left_fight();
+        }
+        else if (sRight.StateNew == LOW) {
+          //Turn Right dan kejar
+          turn_right_fight();
+        }
+      }
+      else {
+        forward_half();
+      }
     }
   }
-  motorOff(MOTOR_A);
-  motorOff(MOTOR_B);
 }
 
 void reverse(void) {
@@ -156,14 +183,43 @@ void reverse(void) {
   motorGo(MOTOR_B, CW, PWM_HALF);
 }
 
-void forward(void) {
+void forward_half(void) {
   motorGo(MOTOR_A, CW, PWM_HALF); //kanan
   motorGo(MOTOR_B, CCW, PWM_HALF);  //kiri
 }
 
+void forward_max(void) {
+  motorGo(MOTOR_A, CW, PWM_MAX);
+  motorGo(MOTOR_B, CCW, PWM_MAX);
+}
+
 void turn(void) {
-  motorGo(MOTOR_A, CCW, PWM_HALF); //kanan
-  motorGo(MOTOR_B, CCW, PWM_HALF);  //kiri
+  motorGo(MOTOR_A, CCW, PWM_HALF); //kanan-reverse
+  motorGo(MOTOR_B, CCW, PWM_HALF);  //kiri-forward
+}
+
+void turn180(void) {
+  motorGo(MOTOR_A, CCW, PWM_HALF); //kanan-reverse
+  motorGo(MOTOR_B, CCW, PWM_HALF);  //kiri-forward
+  while (digitalRead(Front));
+  motorGo(MOTOR_A, CW, PWM_HALF); //kanan-forward
+  motorGo(MOTOR_B, CCW, PWM_HALF);  //kiri-forward
+}
+
+void turn_left_fight(void) {
+  motorGo(MOTOR_A, CW, PWM_HALF); //kanan-forward
+  motorGo(MOTOR_B, CW, PWM_HALF);  //kiri-reverse
+  while (digitalRead(Front));
+  motorGo(MOTOR_A, CW, PWM_HALF); //kanan-forward
+  motorGo(MOTOR_B, CCW, PWM_HALF);  //kiri-forward
+}
+
+void turn_right_fight(void) {
+  motorGo(MOTOR_A, CCW, PWM_HALF); //kanan-reverse
+  motorGo(MOTOR_B, CCW, PWM_HALF);  //kiri-forward
+  while (digitalRead(Front));
+  motorGo(MOTOR_A, CW, PWM_HALF); //kanan-forward
+  motorGo(MOTOR_B, CCW, PWM_HALF);  //kiri-forward
 }
 void motorSetup()
 {
