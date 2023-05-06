@@ -22,6 +22,8 @@
 
   Distributed as-is; no warranty is given. */
 
+#define TRAINING
+
 #define BRAKEVCC 0
 #define CW  1
 #define CCW 2
@@ -30,9 +32,17 @@
 #define MOTOR_A 0
 #define MOTOR_B 1
 
-const uint8_t PWM_MAX = 255;
-const uint8_t PWM_HALF = PWM_MAX / 2;
 
+const uint8_t PWM_MAX = 255;
+#ifdef TRAINING
+const uint8_t PWM_HALF = 80;
+const uint8_t TURN_DLY = 150;
+const uint16_t REV_DLY = 1000;
+#else
+const uint8_t PWM_HALF = PWM_MAX / 2;
+const uint8_t TURN_DLY = 130;
+const uint16_t REV_DLY = 800;
+#endif
 const int currentSensingThreshhold = 100;
 
 /* Voltage controlled input pins with hysteresis, CMOS compatible. These two pins
@@ -85,6 +95,8 @@ const int statPin = 13;
 
 #define FL  A2
 #define FR  A3
+
+const int TIMEOUT = 1500; //1.5sec
 const int Left = 2;
 const int Right = 11;
 const int Front = 10;
@@ -134,6 +146,9 @@ Input_t sFR;
 process_t sLine;
 process_t sObstacle;
 
+//Global Variable
+long time_stamp;
+
 void loop() {
   while (true) {
     sLeft.StateNew = digitalRead(Left);
@@ -142,18 +157,19 @@ void loop() {
     sBack.StateNew = digitalRead(Back);
     sFL.StateNew = digitalRead(FL);
     sFR.StateNew = digitalRead(FR);
-    
+
     sLine.detect = (sFL.StateNew) || (sFR.StateNew);
     sObstacle.detect = !(sLeft.StateNew && sRight.StateNew && sFront.StateNew && sBack.StateNew);
 
     if (sLine.detect) {
       reverse();
-      delay(800);
+      delay(REV_DLY);
       turn();
-      delay(130);
+      delay(TURN_DLY);
     }
     else {
       if (sObstacle.detect) {
+        time_stamp = millis();
         if (sFront.StateNew == LOW) {
           //Kejar depan
           forward_max();
@@ -161,14 +177,17 @@ void loop() {
         else if (sBack.StateNew == LOW) {
           // turn 180
           turn180();
+          beep();
         }
         else if (sLeft.StateNew == LOW) {
           //Turn Left dan kejar
           turn_left_fight();
+          beep();
         }
         else if (sRight.StateNew == LOW) {
           //Turn Right dan kejar
           turn_right_fight();
+          beep();
         }
       }
       else {
@@ -178,6 +197,14 @@ void loop() {
   }
 }
 
+//====================================
+//user define function
+//====================================
+void beep() {
+  digitalWrite(Buzzer, LOW);
+  delay(100);
+  digitalWrite(Buzzer, HIGH);
+}
 void reverse(void) {
   motorGo(MOTOR_A, CCW, PWM_HALF);
   motorGo(MOTOR_B, CW, PWM_HALF);
@@ -201,7 +228,7 @@ void turn(void) {
 void turn180(void) {
   motorGo(MOTOR_A, CCW, PWM_HALF); //kanan-reverse
   motorGo(MOTOR_B, CCW, PWM_HALF);  //kiri-forward
-  while (digitalRead(Front));
+  while ((digitalRead(Front)) && ((millis() - time_stamp) < TIMEOUT));
   motorGo(MOTOR_A, CW, PWM_HALF); //kanan-forward
   motorGo(MOTOR_B, CCW, PWM_HALF);  //kiri-forward
 }
@@ -209,7 +236,7 @@ void turn180(void) {
 void turn_left_fight(void) {
   motorGo(MOTOR_A, CW, PWM_HALF); //kanan-forward
   motorGo(MOTOR_B, CW, PWM_HALF);  //kiri-reverse
-  while (digitalRead(Front));
+  while ((digitalRead(Front)) && ((millis() - time_stamp) < TIMEOUT));
   motorGo(MOTOR_A, CW, PWM_HALF); //kanan-forward
   motorGo(MOTOR_B, CCW, PWM_HALF);  //kiri-forward
 }
@@ -217,7 +244,7 @@ void turn_left_fight(void) {
 void turn_right_fight(void) {
   motorGo(MOTOR_A, CCW, PWM_HALF); //kanan-reverse
   motorGo(MOTOR_B, CCW, PWM_HALF);  //kiri-forward
-  while (digitalRead(Front));
+  while ((digitalRead(Front)) && ((millis() - time_stamp) < TIMEOUT));
   motorGo(MOTOR_A, CW, PWM_HALF); //kanan-forward
   motorGo(MOTOR_B, CCW, PWM_HALF);  //kiri-forward
 }
