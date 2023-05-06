@@ -35,7 +35,7 @@
 
 const uint8_t PWM_MAX = 255;
 #ifdef TRAINING
-const uint8_t PWM_HALF = 80;
+const uint8_t PWM_HALF = 90;
 const uint8_t TURN_DLY = 150;
 const uint16_t REV_DLY = 1000;
 #else
@@ -123,8 +123,6 @@ void setup()
   // Turn off the buzzer
   digitalWrite(Buzzer, HIGH);
   motorSetup();
-
-  while (digitalRead(Pb2) == HIGH);
 }
 
 // Define the Input structure using typedef
@@ -143,6 +141,8 @@ Input_t sFront;
 Input_t sBack;
 Input_t sFL;
 Input_t sFR;
+Input_t sPb1;
+Input_t sPb2;
 process_t sLine;
 process_t sObstacle;
 
@@ -150,6 +150,18 @@ process_t sObstacle;
 long time_stamp;
 
 void loop() {
+  sPb1.StateNew = digitalRead(Pb1);
+  sPb2.StateNew = digitalRead (Pb2);
+  if ( sPb2.StateNew == LOW)
+    progA();
+  else if (sPb1.StateNew == LOW)
+    progB();
+}
+
+//====================================
+//user define function
+//====================================
+void progA(void) {
   while (true) {
     sLeft.StateNew = digitalRead(Left);
     sRight.StateNew = digitalRead(Right);
@@ -197,9 +209,13 @@ void loop() {
   }
 }
 
-//====================================
-//user define function
-//====================================
+void progB(void) {
+  forward_max();
+  beep();
+  if (digitalRead(FL) || digitalRead(FR))
+    progA();
+}
+
 void beep() {
   digitalWrite(Buzzer, LOW);
   delay(100);
